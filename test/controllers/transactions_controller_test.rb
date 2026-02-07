@@ -8,6 +8,71 @@ class TransactionsControllerTest < ActionDispatch::IntegrationTest
     @entry = entries(:transaction)
   end
 
+  test "new pre-fills fields when cloning a transaction" do
+    family = families(:empty)
+    sign_in users(:empty)
+
+    account = family.accounts.create! name: "Cash", balance: 0, currency: "USD", accountable: Depository.new
+    category = family.categories.create!(
+      name: "Housing",
+      color: "#db5a54",
+      lucide_icon: "home",
+      classification: "expense"
+    )
+    merchant = family.merchants.create! name: "Landlord"
+    tag = family.tags.create! name: "Recurring"
+
+    source_entry = create_transaction(
+      account: account,
+      name: "Rent",
+      date: Date.new(2026, 1, 31),
+      amount: 1500,
+      currency: "USD",
+      notes: "Monthly rent",
+      category: category,
+      merchant: merchant,
+      tags: [ tag ],
+      kind: "one_time"
+    )
+
+    get clone_transaction_url(source_entry)
+
+    assert_response :success
+    assert_dom "input[name='entry[name]'][value='Rent']"
+    assert_dom "input[name='entry[nature]'][value='outflow']"
+    assert_dom "input[name='entry[date]'][value='2026-01-31']"
+    assert_dom "input[name='entry[account_id]'][value='#{account.id}']"
+    assert_dom "input[name='entry[entryable_attributes][merchant_id]'][value='#{merchant.id}']"
+    assert_dom "select[name='entry[entryable_attributes][category_id]'] option[value='#{category.id}'][selected]"
+    assert_dom "select[name='entry[entryable_attributes][tag_ids][]'] option[value='#{tag.id}'][selected]"
+
+    amount_input = css_select("input[name='entry[amount]']").first
+    assert_equal "1500.00", amount_input["value"]
+
+    notes_input = css_select("textarea[name='entry[notes]']").first
+    assert_equal "Monthly rent", notes_input.text
+  end
+
+  test "clone infers inflow nature and uses absolute amount" do
+    family = families(:empty)
+    sign_in users(:empty)
+    account = family.accounts.create! name: "Cash", balance: 0, currency: "USD", accountable: Depository.new
+
+    source_entry = create_transaction(
+      account: account,
+      name: "Salary",
+      amount: -2500
+    )
+
+    get clone_transaction_url(source_entry)
+
+    assert_response :success
+    assert_dom "input[name='entry[nature]'][value='inflow']"
+
+    amount_input = css_select("input[name='entry[amount]']").first
+    assert_equal "2500.00", amount_input["value"]
+  end
+
   test "creates with transaction details" do
     assert_difference [ "Entry.count", "Transaction.count" ], 1 do
       post transactions_url, params: {

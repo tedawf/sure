@@ -6,8 +6,19 @@ class TransactionsController < ApplicationController
 
   def new
     super
-    @income_categories = Current.family.categories.incomes.alphabetically
-    @expense_categories = Current.family.categories.expenses.alphabetically
+    @nature = params[:nature].presence || "outflow"
+
+    if params[:clone_entry_id].present?
+      apply_clone_template!(params[:clone_entry_id])
+    end
+    load_new_form_options
+  end
+
+  def clone
+    @nature = params[:nature].presence || "outflow"
+    apply_clone_template!(params[:id])
+    load_new_form_options
+    render :new
   end
 
   def index
@@ -79,6 +90,8 @@ class TransactionsController < ApplicationController
         format.turbo_stream { stream_redirect_back_or_to(account_path(@entry.account)) }
       end
     else
+      @nature = params.dig(:entry, :nature).presence || "outflow"
+      load_new_form_options
       render :new, status: :unprocessable_entity
     end
   end
@@ -387,6 +400,35 @@ class TransactionsController < ApplicationController
 
     def preferences_params
       params.require(:preferences).permit(collapsed_sections: {})
+    end
+
+    def load_new_form_options
+      @income_categories = Current.family.categories.incomes.alphabetically
+      @expense_categories = Current.family.categories.expenses.alphabetically
+    end
+
+    def apply_clone_template!(entry_id)
+      source_entry = Current.family.entries.transactions
+                          .includes(:account, entryable: :tags)
+                          .find(entry_id)
+      source_transaction = source_entry.transaction
+
+      @nature = source_entry.amount.negative? ? "inflow" : "outflow"
+
+      @entry = Current.family.entries.new(
+        account: source_entry.account,
+        name: source_entry.name,
+        date: source_entry.date,
+        amount: source_entry.amount.abs,
+        currency: source_entry.currency,
+        notes: source_entry.notes,
+        entryable: Transaction.new(
+          category_id: source_transaction.category_id,
+          merchant_id: source_transaction.merchant_id,
+          kind: source_transaction.kind,
+          tag_ids: source_transaction.tag_ids
+        )
+      )
     end
 
     # Helper methods for convert_to_trade

@@ -1,4 +1,4 @@
-<%# locals: (entry:, income_categories:, expense_categories:) %>
+<%# locals: (entry:, income_categories:, expense_categories:, nature: "outflow") %>
 
 <%= styled_form_with model: entry, url: transactions_path, class: "space-y-4" do |f| %>
   <% if entry.errors.any? %>
@@ -6,9 +6,9 @@
   <% end %>
 
   <section>
-    <%= render "shared/transaction_type_tabs", active_tab: params[:nature] == "inflow" ? "income" : "expense", account_id: params[:account_id] %>
+    <%= render "shared/transaction_type_tabs", active_tab: nature == "inflow" ? "income" : "expense", account_id: params[:account_id] %>
 
-    <%= f.hidden_field :nature, value: params[:nature] || "outflow" %>
+    <%= f.hidden_field :nature, value: nature %>
     <%= f.hidden_field :entryable_type, value: "Transaction" %>
   </section>
 
@@ -23,10 +23,11 @@
 
     <%= f.money_field :amount, label: t(".amount"), required: true %>
     <%= f.fields_for :entryable do |ef| %>
-      <% categories = params[:nature] == "inflow" ? income_categories : expense_categories %>
+      <% categories = nature == "inflow" ? income_categories : expense_categories %>
+      <%= ef.hidden_field :merchant_id %>
       <%= ef.collection_select :category_id, categories, :id, :name, { prompt: t(".category_prompt"), label: t(".category") } %>
     <% end %>
-    <%= f.date_field :date, label: t(".date"), required: true, min: Entry.min_supported_date, max: Date.current, value: Date.current %>
+    <%= f.date_field :date, label: t(".date"), required: true, min: Entry.min_supported_date, max: Date.current, value: entry.date || Date.current %>
   </section>
 
   <%= render DS::Disclosure.new(title: t(".details")) do %>
