@@ -8,6 +8,23 @@ class TransactionsControllerTest < ActionDispatch::IntegrationTest
     @entry = entries(:transaction)
   end
 
+  test "new shows autocomplete suggestions for transaction names" do
+    family = families(:empty)
+    sign_in users(:empty)
+    account = family.accounts.create! name: "Test", balance: 0, currency: "USD", accountable: Depository.new
+
+    create_transaction(account: account, name: "Coffee shop")
+    create_transaction(account: account, name: "Groceries")
+    create_transaction(account: account, name: "Coffee shop")
+
+    get new_transaction_url(account_id: account.id)
+
+    assert_response :success
+    assert_dom "datalist#transaction-name-suggestions", count: 1
+    assert_dom "datalist#transaction-name-suggestions option[value='Coffee shop']", count: 1
+    assert_dom "datalist#transaction-name-suggestions option[value='Groceries']", count: 1
+  end
+
   test "creates with transaction details" do
     assert_difference [ "Entry.count", "Transaction.count" ], 1 do
       post transactions_url, params: {

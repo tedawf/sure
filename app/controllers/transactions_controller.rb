@@ -6,8 +6,7 @@ class TransactionsController < ApplicationController
 
   def new
     super
-    @income_categories = Current.family.categories.incomes.alphabetically
-    @expense_categories = Current.family.categories.expenses.alphabetically
+    load_new_form_options
   end
 
   def index
@@ -79,6 +78,7 @@ class TransactionsController < ApplicationController
         format.turbo_stream { stream_redirect_back_or_to(account_path(@entry.account)) }
       end
     else
+      load_new_form_options
       render :new, status: :unprocessable_entity
     end
   end
@@ -387,6 +387,18 @@ class TransactionsController < ApplicationController
 
     def preferences_params
       params.require(:preferences).permit(collapsed_sections: {})
+    end
+
+    def load_new_form_options
+      @income_categories = Current.family.categories.incomes.alphabetically
+      @expense_categories = Current.family.categories.expenses.alphabetically
+      @name_suggestions = Current.family.entries.transactions
+                                 .where.not(name: [ nil, "" ])
+                                 .order(created_at: :desc)
+                                 .limit(200)
+                                 .pluck(:name)
+                                 .uniq
+                                 .first(20)
     end
 
     # Helper methods for convert_to_trade
