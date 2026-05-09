@@ -216,6 +216,58 @@ class Family::DataImporterTest < ActiveSupport::TestCase
     assert_equal parent.id, child.parent_id
   end
 
+  test "reuses existing categories by name when importing transactions" do
+    existing_category = @family.categories.create!(
+      name: "Entertainment",
+      color: "#db5a54",
+      lucide_icon: "drama"
+    )
+
+    ndjson = build_ndjson([
+      {
+        type: "Account",
+        data: {
+          id: "acct-1",
+          name: "Main Account",
+          balance: "5000",
+          currency: "USD",
+          accountable_type: "Depository"
+        }
+      },
+      {
+        type: "Category",
+        data: {
+          id: "cat-entertainment",
+          name: "Entertainment",
+          color: "#805dee",
+          classification: "expense",
+          lucide_icon: "film"
+        }
+      },
+      {
+        type: "Transaction",
+        data: {
+          id: "txn-1",
+          account_id: "acct-1",
+          date: "2024-01-15",
+          amount: "-25.00",
+          name: "Movie tickets",
+          currency: "USD",
+          category_id: "cat-entertainment"
+        }
+      }
+    ])
+
+    assert_no_difference -> { @family.categories.count } do
+      Family::DataImporter.new(@family, ndjson).import!
+    end
+
+    transaction = @family.entries.find_by!(name: "Movie tickets").entryable
+    assert_equal existing_category.id, transaction.category_id
+    assert_equal "#805dee", existing_category.reload.color
+    assert_equal "film", existing_category.lucide_icon
+  end
+
   test "imports tags" do
     ndjson = build_ndjson([
       {
@@ -236,6 +288,54 @@ class Family::DataImporterTest < ActiveSupport::TestCase
     assert_equal "#FF0000", tag.color
   end
 
+  test "reuses existing tags by name when importing transactions" do
+    existing_tag = @family.tags.create!(
+      name: "GF",
+      color: "#db5a54"
+    )
+
+    ndjson = build_ndjson([
+      {
+        type: "Account",
+        data: {
+          id: "acct-1",
+          name: "Main Account",
+          balance: "5000",
+          currency: "USD",
+          accountable_type: "Depository"
+        }
+      },
+      {
+        type: "Tag",
+        data: {
+          id: "tag-gf",
+          name: "GF",
+          color: "#805dee"
+        }
+      },
+      {
+        type: "Transaction",
+        data: {
+          id: "txn-1",
+          account_id: "acct-1",
+          date: "2024-01-15",
+          amount: "-25.00",
+          name: "Dinner",
+          currency: "USD",
+          tag_ids: [ "tag-gf" ]
+        }
+      }
+    ])
+
+    assert_no_difference -> { @family.tags.count } do
+      Family::DataImporter.new(@family, ndjson).import!
+    end
+
+    transaction = @family.entries.find_by!(name: "Dinner").entryable
+    assert_equal [ existing_tag.id ], transaction.tag_ids
+    assert_equal "#805dee", existing_tag.reload.color
+  end
+
   test "imports merchants" do
     ndjson = build_ndjson([
       {
@@ -252,6 +352,57 @@ class Family::DataImporterTest < ActiveSupport::TestCase
 
     merchant = @family.merchants.find_by(name: "Amazon")
     assert_not_nil merchant
+  end
+
+  test "reuses existing merchants by name when importing recurring transactions" do
+    existing_merchant = @family.merchants.create!(
+      name: "Internet Provider",
+      color: "#db5a54"
+    )
+
+    ndjson = build_ndjson([
+      {
+        type: "Account",
+        data: {
+          id: "acct-1",
+          name: "Main Checking",
+          balance: "5000",
+          currency: "USD",
+          accountable_type: "Depository"
+        }
+      },
+      {
+        type: "Merchant",
+        data: {
+          id: "merchant-1",
+          name: "Internet Provider",
+          color: "#805dee"
+        }
+      },
+      {
+        type: "RecurringTransaction",
+        data: {
+          id: "recurring-1",
+          account_id: "acct-1",
+          merchant_id: "merchant-1",
+          amount: "-89.99",
+          currency: "USD",
+          expected_day_of_month: 15,
+          last_occurrence_date: "2024-01-15",
+          next_expected_date: "2024-02-15",
+          status: "active",
+          occurrence_count: 3
+        }
+      }
+    ])
+
+    assert_no_difference -> { @family.merchants.count } do
+      Family::DataImporter.new(@family, ndjson).import!
+    end
+
+    recurring_transaction = @family.recurring_transactions.find_by!(amount: "-89.99")
+    assert_equal existing_merchant.id, recurring_transaction.merchant_id
+    assert_equal "#805dee", existing_merchant.reload.color
   end
 
   test "imports recurring transactions with remapped account and merchant references" do
@@ -1149,6 +1300,69 @@ class Family::DataImporterTest < ActiveSupport::TestCase
     assert_not_nil budget_category
     assert_equal "Groceries", budget_category.category.name
     assert_equal 500.0, budget_category.budgeted_spending.to_f
+  end
+
+  test "reuses existing budgets and budget categories by period and category" do
+    existing_category = @family.categories.create!(
+      name: "Groceries",
+      color: "#00FF00",
+      lucide_icon: "shopping-bag"
+    )
+    existing_budget = @family.budgets.create!(
+      start_date: "2024-01-01",
+      end_date: "2024-01-31",
+      budgeted_spending: "2500.00",
+      expected_income: "4000.00",
+      currency: "USD"
+    )
+    existing_budget_category = existing_budget.budget_categories.create!(
+      category: existing_category,
+      budgeted_spending: "250.00",
+      currency: "USD"
+    )
+
+    ndjson = build_ndjson([
+      {
+        type: "Category",
+        data: {
+          id: "cat-groceries",
+          name: "Groceries",
+          color: "#00FF00",
+          classification: "expense"
+        }
+      },
+      {
+        type: "Budget",
+        data: {
+          id: "budget-1",
+          start_date: "2024-01-01",
+          end_date: "2024-01-31",
+          budgeted_spending: "3000.00",
+          expected_income: "5000.00",
+          currency: "USD"
+        }
+      },
+      {
+        type: "BudgetCategory",
+        data: {
+          id: "bc-1",
+          budget_id: "budget-1",
+          category_id: "cat-groceries",
+          budgeted_spending: "500.00",
+          currency: "USD"
+        }
+      }
+    ])
+
+    assert_no_difference -> { @family.budgets.count } do
+      assert_no_difference -> { existing_budget.budget_categories.count } do
+        Family::DataImporter.new(@family, ndjson).import!
+      end
+    end
+
+    assert_equal 3000.0, existing_budget.reload.budgeted_spending.to_f
+    assert_equal 5000.0, existing_budget.expected_income.to_f
+    assert_equal 500.0, existing_budget_category.reload.budgeted_spending.to_f
   end
 
   test "imports rules with conditions and actions" do

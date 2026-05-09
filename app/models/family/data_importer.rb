@@ -140,11 +140,14 @@ class Family::DataImporter
         # Store parent relationship for second pass
         parent_mappings[old_id] = parent_id if parent_id.present?
 
-        category = @family.categories.build(
-          name: data["name"],
-          color: data["color"] || Category::UNCATEGORIZED_COLOR,
-          classification_unused: data["classification_unused"] || data["classification"] || "expense",
-          lucide_icon: data["lucide_icon"] || "shapes"
+        category = @family.categories.find_or_initialize_by(name: data["name"])
+        category.assign_attributes(
+          color: data["color"] || category.color || Category::UNCATEGORIZED_COLOR,
+          classification_unused: data["classification_unused"] ||
+                                 data["classification"] ||
+                                 category.classification_unused ||
+                                 "expense",
+          lucide_icon: data["lucide_icon"] || category.lucide_icon || "shapes"
         )
 
         category.save!
@@ -168,9 +171,9 @@ class Family::DataImporter
         data = record["data"]
         old_id = data["id"]
 
-        tag = @family.tags.build(
-          name: data["name"],
-          color: data["color"] || Tag::COLORS.sample
+        tag = @family.tags.find_or_initialize_by(name: data["name"])
+        tag.assign_attributes(
+          color: data["color"] || tag.color || Tag::COLORS.sample
         )
 
         tag.save!
@@ -183,10 +186,11 @@ class Family::DataImporter
         data = record["data"]
         old_id = data["id"]
 
-        merchant = @family.merchants.build(
-          name: data["name"],
-          color: data["color"],
-          logo_url: data["logo_url"]
+        merchant = @family.merchants.find_or_initialize_by(name: data["name"])
+        merchant.assign_attributes(
+          color: data["color"] || merchant.color,
+          logo_url: data["logo_url"] || merchant.logo_url,
+          website_url: data["website_url"] || merchant.website_url
         )
 
         merchant.save!
@@ -529,9 +533,14 @@ class Family::DataImporter
         data = record["data"]
         old_id = data["id"]
 
-        budget = @family.budgets.build(
-          start_date: Date.parse(data["start_date"].to_s),
-          end_date: Date.parse(data["end_date"].to_s),
+        start_date = Date.parse(data["start_date"].to_s)
+        end_date = Date.parse(data["end_date"].to_s)
+
+        budget = @family.budgets.find_or_initialize_by(
+          start_date: start_date,
+          end_date: end_date
+        )
+        budget.assign_attributes(
           budgeted_spending: data["budgeted_spending"]&.to_d,
           expected_income: data["expected_income"]&.to_d,
           currency: data["currency"] || @family.currency
@@ -556,8 +565,10 @@ class Family::DataImporter
 
         budget = @family.budgets.find(new_budget_id)
 
-        budget_category = budget.budget_categories.build(
-          category_id: new_category_id,
+        budget_category = budget.budget_categories.find_or_initialize_by(
+          category_id: new_category_id
+        )
+        budget_category.assign_attributes(
           budgeted_spending: data["budgeted_spending"].to_d,
           currency: data["currency"] || budget.currency
         )
